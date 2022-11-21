@@ -1081,12 +1081,11 @@ func resourceKubernetesCluster() *pluginsdk.Resource {
 						"enabled": {
 							Type:     pluginsdk.TypeBool,
 							Optional: true,
-							ForceNew: true,
+							Default:  false,
 						},
 						"interval_hours": {
 							Type:     pluginsdk.TypeInt,
 							Optional: true,
-							ForceNew: true,
 						},
 					},
 				},
@@ -1241,6 +1240,32 @@ func resourceKubernetesClusterCreate(d *pluginsdk.ResourceData, meta interface{}
 
 		securityProfile.WorkloadIdentity = &managedclusters.ManagedClusterSecurityProfileWorkloadIdentity{
 			Enabled: &workloadIdentity,
+		}
+	}
+	imageCleanerEnabled := false
+
+	if v, ok := d.GetOk("image_cleaner.enabled"); ok {
+		imageCleanerEnabled = v.(bool)
+
+		if securityProfile == nil {
+			securityProfile = &managedclusters.ManagedClusterSecurityProfile{}
+		}
+
+		securityProfile.ImageCleaner = &managedclusters.ManagedClusterSecurityProfileImageCleaner{
+			Enabled: &imageCleanerEnabled,
+		}
+	}
+
+	if v, ok := d.GetOk("image_cleaner.interval_hours"); ok {
+		imageCleanerIntervalHours := v.(int64)
+
+		if securityProfile == nil {
+			securityProfile = &managedclusters.ManagedClusterSecurityProfile{}
+		}
+
+		securityProfile.ImageCleaner = &managedclusters.ManagedClusterSecurityProfileImageCleaner{
+			Enabled:       &imageCleanerEnabled,
+			IntervalHours: &imageCleanerIntervalHours,
 		}
 	}
 
@@ -1761,7 +1786,28 @@ func resourceKubernetesClusterUpdate(d *pluginsdk.ResourceData, meta interface{}
 			Enabled: &workloadIdentity,
 		}
 	}
-
+	imageCleanerEnabled := false
+	if d.HasChanges("image_cleaner.enabled") {
+		updateCluster = true
+		imageCleanerEnabled = d.Get("image_cleaner.enabled").(bool)
+		if existing.Model.Properties.SecurityProfile == nil {
+			existing.Model.Properties.SecurityProfile = &managedclusters.ManagedClusterSecurityProfile{}
+		}
+		existing.Model.Properties.SecurityProfile.ImageCleaner = &managedclusters.ManagedClusterSecurityProfileImageCleaner{
+			Enabled: &imageCleanerEnabled,
+		}
+	}
+	if d.HasChanges("image_cleaner.interval_hours") {
+		updateCluster = true
+		imageCleanerIntervalHours := d.Get("image_cleaner.interval_hours").(int64)
+		if existing.Model.Properties.SecurityProfile == nil {
+			existing.Model.Properties.SecurityProfile = &managedclusters.ManagedClusterSecurityProfile{}
+		}
+		existing.Model.Properties.SecurityProfile.ImageCleaner = &managedclusters.ManagedClusterSecurityProfileImageCleaner{
+			Enabled:       &imageCleanerEnabled,
+			IntervalHours: &imageCleanerIntervalHours,
+		}
+	}
 	if d.HasChange("web_app_routing") {
 		updateCluster = true
 		existing.Model.Properties.IngressProfile = expandKubernetesClusterIngressProfile(d, d.Get("web_app_routing").([]interface{}))
@@ -2079,6 +2125,18 @@ func resourceKubernetesClusterRead(d *pluginsdk.ResourceData, meta interface{}) 
 			workloadIdentity = *props.SecurityProfile.WorkloadIdentity.Enabled
 		}
 		d.Set("workload_identity_enabled", workloadIdentity)
+
+		imageCleanerEnabled := false
+		if props.SecurityProfile != nil && props.SecurityProfile.ImageCleaner != nil {
+			imageCleanerEnabled = *props.SecurityProfile.ImageCleaner.Enabled
+		}
+		d.Set("image_cleaner.enabled", imageCleanerEnabled)
+
+		if props.SecurityProfile != nil && props.SecurityProfile.ImageCleaner != nil && props.SecurityProfile.ImageCleaner.IntervalHours != nil {
+			imageCleanerIntervalHours := *props.SecurityProfile.ImageCleaner.IntervalHours
+			d.Set("image_cleaner.interval_hours", imageCleanerIntervalHours)
+		}
+		
 
 		// adminProfile is only available for RBAC enabled clusters with AAD and local account is not disabled
 		if props.AadProfile != nil && (props.DisableLocalAccounts == nil || !*props.DisableLocalAccounts) {
